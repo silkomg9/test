@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>일일보고 → 주간/월간 리포트 생성기</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --card:#ffffff; --text:#1f2430; --muted:#6b7280;
+    --border:#e3e5ea; --accent:#2f6fed; --accent-soft:#eaf1ff;
+    --green:#2fa86a; --orange:#e0983f; --red:#e0524a;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#16181d; --card:#1e2128; --text:#e7e9ee; --muted:#9aa1ac;
+      --border:#2c303a; --accent:#5b8def; --accent-soft:#20304f;
+      --green:#3ebf82; --orange:#e0983f; --red:#e5716a;
+      --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+    }
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family: -apple-system, "Malgun Gothic", "맑은 고딕", "Segoe UI", Roboto, sans-serif;
+    line-height:1.5;
+  }
+  .wrap{ max-width:980px; margin:0 auto; padding:32px 20px 80px; }
+  h1{ font-size:22px; margin:0 0 4px; }
+  .sub{ color:var(--muted); font-size:14px; margin:0 0 28px; }
+  .card{
+    background:var(--card); border:1px solid var(--border); border-radius:14px;
+    box-shadow:var(--shadow); padding:20px 22px; margin-bottom:20px;
+  }
+  #dropzone{
+    border:2px dashed var(--border); border-radius:14px; padding:36px 20px;
+    text-align:center; cursor:pointer; transition:.15s; background:var(--card);
+  }
+  #dropzone.drag{ border-color:var(--accent); background:var(--accent-soft); }
+  #dropzone .icon{ font-size:32px; margin-bottom:8px; }
+  #dropzone .main{ font-size:15px; font-weight:600; }
+  #dropzone .hint{ font-size:13px; color:var(--muted); margin-top:4px; }
+  #fileInput{ display:none; }
+  .privacy{ font-size:12px; color:var(--muted); text-align:center; margin-top:10px; }
+
+  .filelist{ margin-top:16px; display:flex; flex-direction:column; gap:6px; }
+  .fileitem{
+    display:flex; align-items:center; gap:10px; padding:8px 12px;
+    border:1px solid var(--border); border-radius:9px; font-size:13px;
+  }
+  .fileitem.err{ border-color:var(--red); color:var(--red); }
+  .fileitem .date{ font-weight:600; min-width:96px; }
+  .fileitem .name{ color:var(--muted); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fileitem button{
+    border:none; background:transparent; color:var(--muted); cursor:pointer; font-size:15px;
+    padding:2px 6px; border-radius:6px;
+  }
+  .fileitem button:hover{ background:var(--border); color:var(--red); }
+
+  .toolbar{ display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  .btn{
+    border:1px solid var(--border); background:var(--card); color:var(--text);
+    padding:7px 14px; border-radius:9px; font-size:13px; cursor:pointer;
+  }
+  .btn:hover{ background:var(--accent-soft); border-color:var(--accent); }
+  .btn.small{ padding:4px 10px; font-size:12px; }
+
+  .tabs{ display:flex; gap:6px; margin:28px 0 16px; }
+  .tab{
+    padding:9px 18px; border-radius:10px; border:1px solid var(--border);
+    background:var(--card); cursor:pointer; font-size:14px; font-weight:600; color:var(--muted);
+  }
+  .tab.active{ background:var(--accent); color:#fff; border-color:var(--accent); }
+
+  .empty{ text-align:center; color:var(--muted); padding:40px 10px; font-size:14px; }
+
+  .period{ margin-bottom:22px; }
+  .period-head{
+    display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px;
+    margin-bottom:10px;
+  }
+  .period-title{ font-size:16px; font-weight:700; }
+  .period-sub{ font-size:12px; color:var(--muted); }
+  .period-stats{ font-size:13px; color:var(--muted); }
+  .period-stats b{ color:var(--text); }
+
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  th, td{ padding:8px 10px; border-bottom:1px solid var(--border); text-align:right; }
+  th:first-child, td:first-child{ text-align:left; }
+  thead th{ color:var(--muted); font-weight:600; font-size:12px; }
+  tbody tr:hover{ background:var(--accent-soft); }
+  tfoot td{ font-weight:700; border-top:2px solid var(--border); border-bottom:none; }
+
+  .barrow{ display:flex; align-items:center; gap:10px; padding:5px 0; font-size:12px; }
+  .barrow .cat{ width:96px; flex-shrink:0; color:var(--muted); }
+  .bartrack{ flex:1; height:16px; background:var(--border); border-radius:5px; overflow:hidden; display:flex; }
+  .bar-done{ background:var(--green); height:100%; }
+  .bar-pending{ background:var(--orange); height:100%; }
+  .barrow .val{ width:190px; flex-shrink:0; color:var(--muted); text-align:right; }
+
+  .legend{ display:flex; gap:16px; font-size:12px; color:var(--muted); margin:6px 0 14px; }
+  .legend span{ display:inline-flex; align-items:center; gap:5px; }
+  .dot{ width:9px; height:9px; border-radius:50%; display:inline-block; }
+
+  .trend{ margin-bottom:8px; }
+  .trend svg{ width:100%; height:180px; }
+  .trend-legend{ display:flex; gap:16px; font-size:12px; color:var(--muted); justify-content:flex-end; }
+
+  @media print{
+    #dropzone, .tabs, .toolbar, #resetBtn, .fileitem button{ display:none !important; }
+    body{ background:#fff; }
+    .card{ box-shadow:none; border:none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>일일보고 → 주간·월간 리포트 생성기</h1>
+  <p class="sub">일일보고 CSV 파일을 올리면 자동으로 주간/월간 단위로 합산해서 보여줍니다. 모든 처리는 이 브라우저 안에서만 이루어지며, 파일은 서버로 전송되지 않습니다.</p>
+
+  <div class="card">
+    <div id="dropzone">
+      <div class="icon">📄</div>
+      <div class="main">클릭하거나 파일을 여기로 끌어다 놓으세요</div>
+      <div class="hint">일일보고_YYYY-MM-DD.csv 형식의 파일, 여러 개 동시 선택 가능</div>
+      <input type="file" id="fileInput" accept=".csv" multiple>
+    </div>
+    <div class="privacy">🔒 업로드가 아니라 "불러오기"입니다 — 파일은 이 컴퓨터 밖으로 나가지 않습니다.</div>
+
+    <div id="fileListWrap" style="display:none;">
+      <div class="toolbar" style="margin-top:18px;">
+        <div style="font-size:13px; color:var(--muted);"><b id="fileCount" style="color:var(--text);"></b>개 파일 불러옴</div>
+        <button class="btn" id="resetBtn">전체 초기화</button>
+      </div>
+      <div class="filelist" id="fileList"></div>
+    </div>
+  </div>
+
+  <div id="reportArea" style="display:none;">
+    <div class="tabs">
+      <div class="tab active" data-tab="weekly">주간보고서</div>
+      <div class="tab" data-tab="monthly">월간보고서</div>
+    </div>
+    <div class="toolbar" style="margin-bottom:6px;">
+      <div></div>
+      <button class="btn small" id="printBtn">🖨️ 인쇄 / PDF로 저장</button>
+    </div>
+    <div id="weeklyView"></div>
+    <div id="monthlyView" style="display:none;"></div>
+  </div>
+
+  <div id="emptyState" class="card empty">아직 불러온 파일이 없습니다. 위에서 일일보고 CSV 파일을 선택해 주세요.</div>
+</div>
+
+<script>
+let loadedFiles = []; // {filename, date, category order per file, data:[{category,received,processed,pending}], error}
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+
+dropzone.addEventListener('click', () => fileInput.click());
+['dragenter','dragover'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove('drag'); }));
+dropzone.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
+document.getElementById('resetBtn').addEventListener('click', () => { loadedFiles = []; render(); });
+document.getElementById('printBtn').addEventListener('click', () => window.print());
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const which = tab.dataset.tab;
+    document.getElementById('weeklyView').style.display = which === 'weekly' ? '' : 'none';
+    document.getElementById('monthlyView').style.display = which === 'monthly' ? '' : 'none';
+  });
+});
+
+function parseCSVLine(line){
+  const result = [];
+  let cur = '', inQuotes = false;
+  for (let i = 0; i < line.length; i++){
+    const c = line[i];
+    if (inQuotes){
+      if (c === '"'){
+        if (line[i+1] === '"'){ cur += '"'; i++; } else { inQuotes = false; }
+      } else { cur += c; }
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { result.push(cur); cur = ''; }
+      else cur += c;
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
+function extractDate(filename, firstLineText){
+  let m = filename.match(/(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  m = firstLineText.match(/(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  return null;
+}
+
+function parseDailyReport(text, filename){
+  text = text.replace(/^\uFEFF/, '');
+  const lines = text.split(/\r\n|\n|\r/);
+  const rows = lines.map(parseCSVLine);
+  const date = extractDate(filename, lines[0] || '');
+  const headerIdx = rows.findIndex(r => r[0] && r[0].trim() === '업무구분');
+  if (headerIdx === -1) {
+    return { filename, error: '표 형식을 인식할 수 없음 ("업무구분" 헤더 없음)' };
+  }
+  if (!date) {
+    return { filename, error: '날짜를 찾을 수 없음 (파일명 또는 제목에 YYYY-MM-DD 필요)' };
+  }
+  const data = [];
+  for (let i = headerIdx + 1; i < rows.length; i++){
+    const r = rows[i];
+    if (!r[0] || r[0].trim() === '') break;
+    data.push({
+      category: r[0].trim(),
+      received: parseInt(r[1], 10) || 0,
+      processed: parseInt(r[2], 10) || 0,
+      pending: parseInt(r[3], 10) || 0
+    });
+  }
+  if (data.length === 0){
+    return { filename, error: '데이터 행이 없음' };
+  }
+  return { filename, date, data };
+}
+
+function handleFiles(fileArray){
+  const files = Array.from(fileArray).filter(f => /\.csv$/i.test(f.name));
+  if (files.length === 0) return;
+  let pending = files.length;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const parsed = parseDailyReport(e.target.result, file.name);
+      if (!parsed.error && loadedFiles.some(f => f.date === parsed.date)){
+        parsed.error = `${parsed.date} 날짜가 이미 불러온 파일과 중복되어 건너뜀`;
+      }
+      loadedFiles.push(parsed);
+      pending--;
+      if (pending === 0) render();
+    };
+    reader.readAsText(file, 'UTF-8');
+  });
+}
+
+function removeFile(filename){
+  loadedFiles = loadedFiles.filter(f => f.filename !== filename);
+  render();
+}
+
+function pad(n){ return String(n).padStart(2, '0'); }
+function fmtDate(d){ return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())}`; }
+function getMonday(dateStr){
+  const d = new Date(dateStr + 'T00:00:00');
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  return new Date(d.getFullYear(), d.getMonth(), diff);
+}
+function isoKey(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+
+function buildGroups(records, keyFn, labelFn, subFn){
+  const groups = new Map();
+  for (const rec of records){
+    const key = keyFn(rec.date);
+    if (!groups.has(key)) groups.set(key, { key, dates: new Set(), categories: new Map() });
+    const g = groups.get(key);
+    g.dates.add(rec.date);
+    if (!g.categories.has(rec.category)) g.categories.set(rec.category, { received:0, processed:0, pending:0 });
+    const c = g.categories.get(rec.category);
+    c.received += rec.received; c.processed += rec.processed; c.pending += rec.pending;
+  }
+  return [...groups.values()]
+    .sort((a,b) => a.key.localeCompare(b.key))
+    .map(g => ({ ...g, label: labelFn(g), sub: subFn(g) }));
+}
+
+function renderFileList(){
+  const wrap = document.getElementById('fileListWrap');
+  const list = document.getElementById('fileList');
+  if (loadedFiles.length === 0){ wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+  document.getElementById('fileCount').textContent = loadedFiles.length;
+  const sorted = [...loadedFiles].sort((a,b) => (a.date||'').localeCompare(b.date||''));
+  list.innerHTML = sorted.map(f => `
+    <div class="fileitem ${f.error ? 'err' : ''}">
+      <span class="date">${f.date || '?'}</span>
+      <span class="name">${f.filename}${f.error ? ' — ' + f.error : ''}</span>
+      <button onclick="removeFile('${f.filename.replace(/'/g,"\\'")}')">✕</button>
+    </div>`).join('');
+}
+
+function allRecords(){
+  const recs = [];
+  for (const f of loadedFiles){
+    if (f.error) continue;
+    for (const d of f.data){
+      recs.push({ date: f.date, category: d.category, received: d.received, processed: d.processed, pending: d.pending });
+    }
+  }
+  return recs;
+}
+
+function categoryOrder(recs){
+  const seen = [];
+  for (const r of recs) if (!seen.includes(r.category)) seen.push(r.category);
+  return seen;
+}
+
+function renderTrend(groups, cats){
+  const w = 900, h = 160, padL = 40, padR = 10, padT = 10, padB = 24;
+  const totals = groups.map(g => {
+    let received = 0, processed = 0;
+    for (const c of g.categories.values()){ received += c.received; processed += c.processed; }
+    return { received, processed };
+  });
+  const maxV = Math.max(1, ...totals.map(t => t.received));
+  const n = groups.length;
+  const stepX = n > 1 ? (w - padL - padR) / (n - 1) : 0;
+  const x = i => padL + stepX * i;
+  const y = v => h - padB - (v / maxV) * (h - padT - padB);
+  const linePath = key => totals.map((t,i) => `${i===0?'M':'L'} ${x(i).toFixed(1)} ${y(t[key]).toFixed(1)}`).join(' ');
+  const dots = key => totals.map((t,i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(t[key]).toFixed(1)}" r="3" fill="${key==='received'?'var(--muted)':'var(--green)'}"/>`).join('');
+  const labels = groups.map((g,i) => `<text x="${x(i).toFixed(1)}" y="${h-6}" font-size="10" fill="var(--muted)" text-anchor="middle">${g.short || g.label}</text>`).join('');
+  return `
+    <div class="trend">
+      <div class="trend-legend">
+        <span><span class="dot" style="background:var(--muted)"></span>총 접수</span>
+        <span><span class="dot" style="background:var(--green)"></span>총 처리</span>
+      </div>
+      <svg viewBox="0 0 ${w} ${h}">
+        <path d="${linePath('received')}" fill="none" stroke="var(--muted)" stroke-width="2"/>
+        <path d="${linePath('processed')}" fill="none" stroke="var(--green)" stroke-width="2"/>
+        ${dots('received')}${dots('processed')}
+        ${n <= 14 ? labels : ''}
+      </svg>
+    </div>`;
+}
+
+function renderPeriodTable(g, cats){
+  let totalR=0, totalP=0, totalPend=0;
+  const rows = cats.map(cat => {
+    const c = g.categories.get(cat) || { received:0, processed:0, pending:0 };
+    totalR += c.received; totalP += c.processed; totalPend += c.pending;
+    const rate = c.received > 0 ? (c.processed / c.received * 100) : 0;
+    return { cat, ...c, rate };
+  });
+  const totalRate = totalR > 0 ? (totalP / totalR * 100) : 0;
+  const maxR = Math.max(1, ...rows.map(r => r.received));
+
+  const bars = rows.map(r => {
+    const donePct = (r.processed / maxR) * 100;
+    const pendPct = (r.pending / maxR) * 100;
+    return `
+      <div class="barrow">
+        <div class="cat">${r.cat}</div>
+        <div class="bartrack">
+          <div class="bar-done" style="width:${donePct}%"></div>
+          <div class="bar-pending" style="width:${pendPct}%"></div>
+        </div>
+        <div class="val">접수 ${r.received.toLocaleString()} · 처리 ${r.processed.toLocaleString()} · 미처리 ${r.pending.toLocaleString()} (${r.rate.toFixed(1)}%)</div>
+      </div>`;
+  }).join('');
+
+  const tableRows = rows.map(r => `
+    <tr>
+      <td>${r.cat}</td>
+      <td>${r.received.toLocaleString()}</td>
+      <td>${r.processed.toLocaleString()}</td>
+      <td>${r.pending.toLocaleString()}</td>
+      <td>${r.rate.toFixed(1)}%</td>
+    </tr>`).join('');
+
+  return `
+    <div class="period card">
+      <div class="period-head">
+        <div>
+          <div class="period-title">${g.label}</div>
+          <div class="period-sub">${g.sub}</div>
+        </div>
+        <div class="period-stats">총 접수 <b>${totalR.toLocaleString()}</b> · 총 처리 <b>${totalP.toLocaleString()}</b> · 총 미처리 <b>${totalPend.toLocaleString()}</b> · 처리율 <b>${totalRate.toFixed(1)}%</b></div>
+      </div>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--green)"></span>처리</span>
+        <span><span class="dot" style="background:var(--orange)"></span>미처리</span>
+        <span style="color:var(--muted)">(막대 길이는 접수 건수 기준)</span>
+      </div>
+      ${bars}
+      <table style="margin-top:16px;">
+        <thead><tr><th>업무구분</th><th>접수</th><th>처리</th><th>미처리</th><th>처리율</th></tr></thead>
+        <tbody>${tableRows}</tbody>
+        <tfoot><tr><td>합계</td><td>${totalR.toLocaleString()}</td><td>${totalP.toLocaleString()}</td><td>${totalPend.toLocaleString()}</td><td>${totalRate.toFixed(1)}%</td></tr></tfoot>
+      </table>
+    </div>`;
+}
+
+function render(){
+  renderFileList();
+  const recs = allRecords();
+  const reportArea = document.getElementById('reportArea');
+  const emptyState = document.getElementById('emptyState');
+
+  if (recs.length === 0){
+    reportArea.style.display = 'none';
+    emptyState.style.display = '';
+    return;
+  }
+  reportArea.style.display = '';
+  emptyState.style.display = 'none';
+
+  const cats = categoryOrder(recs);
+
+  const weeklyGroups = buildGroups(
+    recs,
+    date => isoKey(getMonday(date)),
+    g => {
+      const monday = new Date(g.key + 'T00:00:00');
+      const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+      const weekOfMonth = Math.ceil(monday.getDate() / 7);
+      return `${monday.getFullYear()}년 ${monday.getMonth()+1}월 ${weekOfMonth}주차`;
+    },
+    g => {
+      const monday = new Date(g.key + 'T00:00:00');
+      const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+      return `${fmtDate(monday)} ~ ${fmtDate(sunday)} · 데이터 ${g.dates.size}일`;
+    }
+  );
+  weeklyGroups.forEach(g => { const m = new Date(g.key+'T00:00:00'); g.short = `${m.getMonth()+1}/${m.getDate()}`; });
+
+  const monthlyGroups = buildGroups(
+    recs,
+    date => date.slice(0,7),
+    g => { const [y,m] = g.key.split('-'); return `${y}년 ${parseInt(m)}월`; },
+    g => `데이터 ${g.dates.size}일`
+  );
+  monthlyGroups.forEach(g => { g.short = g.label; });
+
+  document.getElementById('weeklyView').innerHTML =
+    renderTrend(weeklyGroups, cats) + weeklyGroups.map(g => renderPeriodTable(g, cats)).join('');
+  document.getElementById('monthlyView').innerHTML =
+    renderTrend(monthlyGroups, cats) + monthlyGroups.map(g => renderPeriodTable(g, cats)).join('');
+}
+
+render();
+</script>
+</body>
+</html>
